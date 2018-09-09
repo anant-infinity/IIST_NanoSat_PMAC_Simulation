@@ -1,0 +1,146 @@
+
+clc
+clear all
+close all
+
+global I ts mu0
+global Hc Br Bs
+
+I = [0.00551 0 0; 0 0.02552 0; 0 0 0.02565];
+ts = 0.1;
+mu0 = 4*pi*10^(-7);
+Hc = 12;
+Br = 0.004;
+Bs = 0.027;
+
+Heq = 18.3; % equitorial magnetic field at 600km, A/m
+i = 90;     % orbit inclination, deg
+T_period_satellite = 98;
+length = 95; %mm
+diameter = 1; %mm
+B_body_prev = [0;0;0];
+
+
+q = [0.9174, -0.308257, 0.207685, 0.141728]';
+w = [10;5;5]*pi/180;
+
+t_hr = 24*30;
+timespan = linspace(1,t_hr*60,t_hr*60);
+
+for t = 1:t_hr*60  %in min
+    
+    u = (360/T_period_satellite)*t;
+    H1 = 3*Heq*SinD(i).*CosD(i).*(SinD(u).^2);
+    H2 = -3*Heq*SinD(i).*SinD(u).*CosD(u);
+    H3 = Heq*(1-3*(SinD(i).^2).*(SinD(u).^2));
+    
+    dcm = quat2dcm(q'); 
+    eul = quat2eul(q');
+   
+    H_body = dcm*[H1;H2;H3];
+    B_body = mu0*H_body;
+    
+%-------------------------------------------------------------------------%
+%                           magnetic moment                               %
+%-------------------------------------------------------------------------%
+    
+    mag_m = [0.3;0;0];
+    T_magnet = cross(mag_m,B_body) ;
+    
+%-------------------------------------------------------------------------%
+%                           hysteresis moment                             %
+%-------------------------------------------------------------------------%
+   
+    Bhyst_y = BH_Curve(B_body(2)/mu0, B_body_prev(2)/mu0);
+    Bhyst_z = BH_Curve(B_body(3)/mu0, B_body_prev(3)/mu0);
+    B_body_prev = B_body;
+
+    Vhyst = pi*((diameter/2)^2)*length*10^(-9);
+
+    mhyst_y = Bhyst_y * Vhyst/mu0;
+    mhyst_z = Bhyst_z * Vhyst/mu0;
+
+    m_hyst = [0;mhyst_y;mhyst_z];
+    
+    T_hyst = cross(m_hyst, B_body);
+    
+%-------------------------------------------------------------------------%
+%                         Kinematic and Dynamic                           %
+%-------------------------------------------------------------------------%
+    
+    T = T_magnet + T_hyst;
+    
+    [q,w] = dynamic_kinematic_eq(w,q,T);
+    
+    w_x(t) = w(1)*180/pi;
+    w_y(t) = w(2)*180/pi;
+    w_z(t) = w(3)*180/pi;
+
+    q1(t) = q(1);
+    q2(t) = q(2);
+    q3(t) = q(3);
+    q4(t) = q(4);
+    
+    eul_1(t) = eul(1); 
+    eul_2(t) = eul(2);
+    eul_3(t) = eul(3);
+    
+    H_x(t) = H1;
+    H_y(t) = H2;
+    H_z(t) = H3;
+    
+    B_body_x(t) = B_body(1);
+    B_body_y(t) = B_body(2);
+    B_body_z(t) = B_body(3);
+    
+    Tx_mag(t) = T_magnet(1);
+    Ty_mag(t) = T_magnet(2);
+    Tz_mag(t) = T_magnet(3);
+    
+    Tx_hyst(t) = T_hyst(1);
+    Ty_hyst(t) = T_hyst(2);
+    Tz_hyst(t) = T_hyst(3);
+    
+    Tx(t) = T(1);
+    Ty(t) = T(2);
+    Tz(t) = T(3);
+    
+end
+
+figure(1)
+plot(timespan, w_x,'b',timespan, w_y,'r',timespan, w_z,'g');
+title('w');
+
+figure(2)
+subplot(2,2,1);  plot(timespan/60,q1');   title('q1');  xlabel('t(hr)'); ylabel('quaternion');
+grid on;
+subplot(2,2,2);  plot(timespan/60,q2');   title('q2');  xlabel('t(hr)'); ylabel('quaternion');
+grid on;
+subplot(2,2,3);  plot(timespan/60,q3');   title('q3');  xlabel('t(hr)'); ylabel('quaternion');
+grid on;
+subplot(2,2,4);  plot(timespan/60,q4');   title('q4');  xlabel('t(hr)'); ylabel('quaternion');
+grid on;
+
+figure(3) 
+plot(timespan, B_body_x,'b',timespan, B_body_y,'r',timespan, B_body_z,'g');
+title('H_body');
+
+figure(4)
+plot(timespan, H_x,'b',timespan, H_y,'r',timespan, H_z,'g');
+title('H');
+
+figure(5)
+plot(timespan/60, Tx','b', timespan/60, Ty','r', timespan/60, Tz','g');   title('T');  xlabel('t(hr)'); ylabel('Torque');
+title('T');
+
+figure(6)
+plot(timespan/60, Tx_mag','b', timespan/60, Ty_mag','r', timespan/60, Tz_mag','g');   title('T_mag');  xlabel('t(hr)'); ylabel('Torque_mag');
+title('T mag');
+
+figure(7)
+plot(timespan/60, Tx_hyst','b', timespan/60, Ty_hyst','r', timespan/60, Tz_hyst','g');   title('T_mag');  xlabel('t(hr)'); ylabel('Torque_mag');
+title('T hyst');
+
+figure(8)
+plot(timespan, eul_1,'b',timespan, eul_2,'r',timespan, eul_3,'g');
+title('euler angles');

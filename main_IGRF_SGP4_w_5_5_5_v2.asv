@@ -1,0 +1,317 @@
+
+clc
+clear all
+close all
+
+global I ts mu0 start_date Hs1_x Hs1_y 
+% I = [0.354 0 0; 0 1.138 0; 0 0 1.191]*(10^(-2));
+I = [2.22 0 0; 0 2.18 0; 0 0 0.5]*(10^(-2));
+Hs1_x = 0;
+Hs1_y = 0;
+q = [1 0 0 0]';
+w = [5;5;5]*pi/180;
+
+SOC = 80; %Initial SOC 
+SOC_array = [];
+
+ts = 1;
+mu0 = 4*pi*10^(-7);
+
+S_eci_b = [];
+
+
+%-------------------------------------------------------------------------%
+%                    TLE file name for running SGP4                       %
+%-------------------------------------------------------------------------%
+fname = 'tle_isat.txt';
+%simulation start date:  datenum(2019,01,01,00,00,00): 735126.041527778
+start_date = datenum(2019,01,01,00,00,00);
+
+time_total = 1000 ;  
+
+timespan = 0:ts:time_total;
+Power_gen_b=zeros(time_total/ts +1,1);
+t = 0;
+for t_time = range(1, time_total/t 
+    t = t + 1;
+    tsince = t_time/60;                  % tsince in minutes
+    [pos,vel] = SGP4_eci( tsince, fname );   
+    
+%-------------------------------------------------------------------------%
+%                        IGRF model of earth                           %
+%-------------------------------------------------------------------------%    
+  
+    jd = datevec(addtodate(start_date,t_time,'second'));
+    lat = eci2lla((pos*1000)',jd);
+
+    B_eci = IGRF_eci(lat, jd);
+
+    dcm = quat2dcm(q'); 
+    eul = quat2eul(q');
+   
+    B_body = dcm*B_eci;
+
+%-------------------------------------------------------------------------%
+%                 residual magnetic moment torque                         %
+%-------------------------------------------------------------------------%
+
+m_res = [ 0.0059, 0.0083, -0.0004]';
+T_res = cross(m_res, B_body);
+%     
+% -------------------------------------------------------------------------%
+%                       gravity gradient torque                            %
+% -------------------------------------------------------------------------%
+% 
+Tgg = ComputeGGTorque(pos,q');
+
+%-------------------------------------------------------------------------%
+%                         aero dynamic torque                             %
+%-------------------------------------------------------------------------%
+
+Ta = ComputeAeroTorque(vel,q');
+
+%-------------------------------------------------------------------------%
+%                        Hysterisis Rods Torque                           %
+%-------------------------------------------------------------------------%
+
+
+
+T_hys = hyst_trq2(B_body);
+
+
+%-------------------------------------------------------------------------%
+%                        Bar Magnet Torque                           %
+%-------------------------------------------------------------------------%
+m=[0,0,0.55]';
+Tb = cross(m,B_body);
+
+%-------------------------------------------------------------------------%
+%                         Kinematic and Dynamic                           %
+%-------------------------------------------------------------------------%
+    
+    T = Tgg + Ta + T_res + T_hys' + Tb;
+    
+    [q,w] = dynamic_kinematic_eq(w,q,T);
+    
+    w_x(t) = w(1);
+    w_y(t) = w(2);
+    w_z(t) = w(3);
+
+    q1(t) = q(1);
+    q2(t) = q(2);
+    q3(t) = q(3);
+    q4(t) = q(4);
+    
+    eul_1(t) = eul(1); 
+    eul_2(t) = eul(2);
+    eul_3(t) = eul(3);
+    
+    B_i_x(t) = B_eci(1);
+    B_i_y(t) = B_eci(2);
+    B_i_z(t) = B_eci(3);
+    
+    B_body_x(t) = B_body(1);
+    B_body_y(t) = B_body(2);
+    B_body_z(t) = B_body(3);
+    
+    Tx_res(t) = T_res(1);
+    Ty_res(t) = T_res(2);
+    Tz_res(t) = T_res(3);
+    
+    Tx_gg(t) = Tgg(1);
+    Ty_gg(t) = Tgg(2);
+    Tz_gg(t) = Tgg(3);
+    
+    Tx_a(t) = Ta(1);
+    Ty_a(t) = Ta(2);
+    Tz_a(t) = Ta(3);
+    
+    Tx_b(t) = Tb(1);
+    Ty_b(t) = Tb(2);
+    Tz_b(t) = Tb(3);
+    
+    Tx_hys(t) = T_hys(1);
+    Ty_hys(t) = T_hys(2);
+    Tz_hys(t) = T_hys(3);
+    
+    Tx(t) = T(1);
+    Ty(t) = T(2);
+    Tz(t) = T(3);
+    
+%-------------------------------------------------------------------------%
+%                         calculating Sun Vector angle with Body axes     %
+%-------------------------------------------------------------------------%
+
+%Julian Date from current Date
+jd_new = 367 * jd(1) - round(7*(jd(1) + round((jd(2)+9)/12))/4) + round(275*jd(2)/9) + jd(3) + 1721013.5 + (jd(4)/24) + (jd(5)/14400) + (jd(6)/86400);
+T_UT1 = (jd_new - 2451545.0) / 36525;
+
+lambda_Msun = 280.4606184 + (36000.77005361 * T_UT1);
+M_Sun = 357.5277233 + (35999.05034 * T_UT1);
+lambda_elliptic = M_Sun + 1.914666471 * (sin(degtorad(M_Sun))) + 0.918994643 * sin(degtorad(2 * M_Sun));
+
+epsilon = 23.439291 - (0.0130042 * T_UT1);
+
+%Sun Vector in ECI Frame
+
+S_eci = [cos(degtorad(lambda_elliptic)), cos(epsilon)*sin(degtorad(lambda_elliptic)), sin(epsilon)*sin(degtorad(lambda_elliptic))]';
+%Sun Vector in Body Frame 
+S_body = dcm*S_eci;
+S_eci_b = [S_eci_b; S_eci'];
+%S_Body_Norm =  S_body/norm(S_body);
+
+%Sun Vector angle with Spacecraft axes
+alpha_x = acosd(dot([1;0;0],S_body)/(norm(S_body)));
+alpha_y = acosd(dot([0;1;0],S_body)/(norm(S_body)));
+alpha_z = acosd(dot([0;0;1],S_body)/(norm(S_body)));
+
+%-------------------------------------------------------------------------%
+%                         Calculating Power Generation                    %
+%-------------------------------------------------------------------------%
+
+eta = 0.266; % Solar Efficiency - Efficiency 
+intensity = 1; % Solar Intensity 
+panel_area = 30.18*10^(-4);
+panels_per_face = 6;
+solar_irradiance = 1353;
+buck_efficieny = 0.85;
+P_gen = buck_efficieny*eta*intensity*panel_area*solar_irradiance*panels_per_face*(abs(cos(alpha_x)) + abs(cos(alpha_y)));
+Power_gen_b(i) = [P_gen];
+
+%-------------------------------------------------------------------------%
+%                         Calculating Power Consumption                   %
+%-------------------------------------------------------------------------%
+Payload_power = 0.2;
+CDH_power = 1.2;
+EPS_power = 1.78;
+Comm_RX = 0.23; 
+Bat_Heater = 4.64;
+ADCS_power = 0.002;
+
+Total_Power = CDH_power + EPS_power+ Comm_RX+ Payload_power + ADCS_power;
+
+%-------------------------------------------------------------------------%
+%                         calculating Current SOC                         %
+%-------------------------------------------------------------------------%
+
+Battery_Voltage = 8.4; %Confirm 
+excess_charge = (P_gen - Total_Power)*ts/Battery_Voltage;
+
+if(SOC>=100 && excess_charge >= 0)
+    SOC = 100;
+elseif(SOC <= 0 && excess_charge<=0)
+    SOC = 0;
+else
+    SOC = SOC + excess_charge*100/(2.5*3600*2);
+end
+    
+
+
+
+%SOC = [SOC ;SOC + excess_charge/(2.5*3600*2)]; %Confirm 
+SOC_array = [SOC_array; SOC];
+
+
+end
+
+
+t = time_total*(1/ts) + 1;
+s = 20;
+timespan = linspace(1,t,t);
+% time_x_label = store_t/6035;            %in days
+time_x_label = timespan/(24*60*60*(1/ts));
+figure(1)
+plot(time_x_label, w_x*180/pi,'b',time_x_label,w_y*180/pi,'r', time_x_label,w_z*180/pi,'g' );
+grid on;
+title('angular rates');   xlabel('time (days)');  ylabel('angular rates (deg/sec)');
+legend('x','y','z');
+xlim([0 15]);
+set(gca,'fontsize',s);
+
+figure(2)
+subplot(2,2,1);  plot(time_x_label,q1');   title('q0');  xlabel('time (days)'); ylabel('quaternion');
+grid on;
+set(gca,'fontsize',s);
+subplot(2,2,2);  plot(time_x_label,q2');   title('q1');  xlabel('time (days)'); ylabel('quaternion');
+grid on;
+set(gca,'fontsize',s);
+subplot(2,2,3);  plot(time_x_label,q3');   title('q2');  xlabel('time (days)'); ylabel('quaternion');
+grid on;
+set(gca,'fontsize',s);
+subplot(2,2,4);  plot(time_x_label,q4');   title('q3');  xlabel('time (days)'); ylabel('quaternion');
+grid on;
+set(gca,'fontsize',s);
+
+figure(3) 
+plot(time_x_label, B_body_x,'b',time_x_label, B_body_y,'r',time_x_label, B_body_z,'g');
+grid on;
+title('Magnetic fields in body frame');   xlabel('time (days)');  ylabel('B (T)');
+legend('x','y','z');
+set(gca,'fontsize',s);
+
+figure(4)
+plot(time_x_label, B_i_x,'b',time_x_label, B_i_y,'r',time_x_label, B_i_z,'g');
+grid on;
+title('Magnetic fields in eci frame');   xlabel('time (days)');  ylabel('B (T)');
+legend('x','y','z');
+set(gca,'fontsize',s);
+
+
+figure(5)
+plot(time_x_label, Tx','b', time_x_label, Ty','r', time_x_label, Tz','g');  
+grid on;
+title('Total Torque');     xlabel('time (days)'); ylabel('Torque (Nm)');   
+legend('x','y','z');
+set(gca,'fontsize',s);
+
+figure(6)
+plot(time_x_label, Tx_gg','b', time_x_label, Ty_gg','r', time_x_label, Tz_gg','g'); 
+title('Torque due to gravity gradient');    xlabel('time'); ylabel('Torque (Nm)');   
+legend('x','y','z');
+set(gca,'fontsize',s);
+
+figure(7)
+plot(time_x_label, Tx_a','b', time_x_label, Ty_a','r', time_x_label, Tz_a','g'); 
+title('Torque due to aerodynamic drag');     xlabel('time'); ylabel('Torque (Nm)'); 
+legend('x','y','z');
+set(gca,'fontsize',s);
+
+figure(8)
+plot(time_x_label, Tx_res','b', time_x_label, Ty_res','r', time_x_label, Tz_res','g'); 
+grid on;
+title('Torque due to residual magnetic moment');     xlabel('time'); ylabel('Torque (Nm)'); 
+legend('x','y','z');
+set(gca,'fontsize',s);
+
+figure(9)
+plot(time_x_label, Tx_hys','b', time_x_label, Ty_hys','r', time_x_label, Tz_hys','g'); 
+grid on;
+title('Torque due to hysteris rods');     xlabel('time'); ylabel('Torque (Nm)'); 
+legend('x','y','z');
+set(gca,'fontsize',s);
+
+figure(10)
+plot(time_x_label, Tx_b','b', time_x_label, Ty_b','r', time_x_label, Tz_b','g'); 
+grid on;
+title('Torque due to Bar Magnet');     xlabel('time'); ylabel('Torque (Nm)'); 
+legend('x','y','z');
+set(gca,'fontsize',s);
+
+figure(11)
+plot(time_x_label, SOC_array);
+grid on;
+title('SOC'); xlabel('time (days)'); ylabel('SOC'); 
+set(gca,'fontsize',s);
+
+% figure(9)
+% plot(time_x_label, eul_1,'b',time_x_label, eul_2,'r',time_x_label, eul_3,'g');
+% grid on;
+% title('euler angles');       xlabel('time (days)'); ylabel('euler angles (rad)'); 
+% legend('x','y','z');
+% set(gca,'fontsize',s);
+
+%figure(10)
+%plot(time_x_label, alpha_plot);
+%grid on;
+%title('alpha plot');       xlabel('time (days)'); ylabel('alpha (deg)'); 
+%set(gca,'fontsize',s);
