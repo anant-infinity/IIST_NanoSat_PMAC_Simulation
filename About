@@ -1,0 +1,9 @@
+Simulation of a 3U NanoSatellite which utilises the Passive Magnetic Attitude Control System.
+
+The main features of this Repository are:
+1. Uses SPG4 orbit propagator to simulate the orbit of the satellite.
+2. Uses IGRF model to calculate magnetic field at every point in the orbit.
+3. Computes the various disturbances torques, Bar Magnet Torque and hysterisis Rod Torque.
+4. Uses Euler's equation to calculate omega of the satellite.
+5. Calculates current attitude using quaternions
+6. Calculates Power Generation and SOC of the battery, as a function of time in the orbit.
