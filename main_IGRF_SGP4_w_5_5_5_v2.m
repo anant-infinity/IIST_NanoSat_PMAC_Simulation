@@ -8,17 +8,17 @@ global I ts mu0 start_date Hs1_x Hs1_y
 I = [2.22 0 0; 0 2.18 0; 0 0 0.5]*(10^(-2));
 Hs1_x = 0;
 Hs1_y = 0;
+%Initial Parameters 
 q = [1 0 0 0]';
 w = [5;5;5]*pi/180;
-
 SOC = 80; %Initial SOC 
-SOC_array = [];
 
-ts = 1;
+
+
+ts = 1; %Resolution of the simulation
 mu0 = 4*pi*10^(-7);
 
-S_eci_b = [];
-Power_gen_b=[];
+
 
 %-------------------------------------------------------------------------%
 %                    TLE file name for running SGP4                       %
@@ -29,8 +29,59 @@ start_date = datenum(2019,01,01,00,00,00);
 
 time_total = 1000 ;  
 
+
+
 timespan = 0:ts:time_total;
-t = 0;
+
+%Preallocating Arrays 
+SOC_array = zeros(1,length(timespan));
+S_eci_b = zeros(1,length(timespan));
+Power_gen_b = zeros(1,length(timespan));
+
+w_x = zeros(1,length(timespan));
+w_y = zeros(1,length(timespan));
+w_z = zeros(1,length(timespan));
+
+q1 = zeros(1,length(timespan));
+q2 = zeros(1,length(timespan));
+q3 = zeros(1,length(timespan));
+q4 = zeros(1,length(timespan));
+
+B_i_x = zeros(1,length(timespan));
+B_i_y = zeros(1,length(timespan));
+B_i_z = zeros(1,length(timespan));
+
+B_body_x = zeros(1,length(timespan));
+B_body_y = zeros(1,length(timespan));
+B_body_z = zeros(1,length(timespan));
+
+Tx_res = zeros(1,length(timespan));
+Ty_res = zeros(1,length(timespan));
+Tz_res = zeros(1,length(timespan));
+
+Tx_gg = zeros(1,length(timespan));
+Ty_gg = zeros(1,length(timespan));
+Tz_gg = zeros(1,length(timespan));
+
+Tx_a = zeros(1,length(timespan));
+Tx_a = zeros(1,length(timespan));
+Tz_a = zeros(1,length(timespan));
+
+Tx_b = zeros(1,length(timespan));
+Ty_b = zeros(1,length(timespan));
+Tz_b = zeros(1,length(timespan));
+
+Tx_hys = zeros(1,length(timespan));
+Ty_hys = zeros(1,length(timespan));
+Tz_hys = zeros(1,length(timespan));
+
+Tx = zeros(1,length(timespan));
+Ty = zeros(1,length(timespan));
+Tz = zeros(1,length(timespan));
+
+
+t = 1; %Index of the Array
+
 for t_time = timespan
     t = t + 1;
     tsince = t_time/60;                  % tsince in minutes
@@ -92,6 +143,7 @@ Tb = cross(m,B_body);
     
     [q,w] = dynamic_kinematic_eq(w,q,T);
     
+
     w_x(t) = w(1);
     w_y(t) = w(2);
     w_z(t) = w(3);
@@ -101,9 +153,9 @@ Tb = cross(m,B_body);
     q3(t) = q(3);
     q4(t) = q(4);
     
-    eul_1(t) = eul(1); 
-    eul_2(t) = eul(2);
-    eul_3(t) = eul(3);
+    %eul_1(t) = eul(1); 
+    %eul_2(t) = eul(2);
+    %eul_3(t) = eul(3);
     
     B_i_x(t) = B_eci(1);
     B_i_y(t) = B_eci(2);
@@ -156,13 +208,14 @@ epsilon = 23.439291 - (0.0130042 * T_UT1);
 S_eci = [cos(degtorad(lambda_elliptic)), cos(epsilon)*sin(degtorad(lambda_elliptic)), sin(epsilon)*sin(degtorad(lambda_elliptic))]';
 %Sun Vector in Body Frame 
 S_body = dcm*S_eci;
-S_eci_b = [S_eci_b; S_eci'];
+%S_eci_b = [S_eci_b; S_eci'];
+S_eci_b(t) = S_eci';
 %S_Body_Norm =  S_body/norm(S_body);
 
 %Sun Vector angle with Spacecraft axes
-alpha_x = acosd(dot([1;0;0],S_body)/(norm(S_body)));
-alpha_y = acosd(dot([0;1;0],S_body)/(norm(S_body)));
-alpha_z = acosd(dot([0;0;1],S_body)/(norm(S_body)));
+cos_alpha_x = dot([1;0;0],S_body)/(norm(S_body));
+cos_alpha_y = dot([0;1;0],S_body)/(norm(S_body));
+cos_alpha_z = dot([0;0;1],S_body)/(norm(S_body));
 
 %-------------------------------------------------------------------------%
 %                         Calculating Power Generation                    %
@@ -174,8 +227,10 @@ panel_area = 30.18*10^(-4);
 panels_per_face = 6;
 solar_irradiance = 1353;
 buck_efficieny = 0.85;
-P_gen = buck_efficieny*eta*intensity*panel_area*solar_irradiance*panels_per_face*(abs(cos(alpha_x)) + abs(cos(alpha_y)));
-Power_gen_b = [Power_gen_b; P_gen];
+P_gen = buck_efficieny*eta*intensity*panel_area*solar_irradiance*panels_per_face*(abs(cos_alpha_x) + abs(cos_alpha_y));
+
+%Power_gen_b = [Power_gen_b; P_gen];
+Power_gen_b(t) = P_gen;
 
 %-------------------------------------------------------------------------%
 %                         Calculating Power Consumption                   %
@@ -184,10 +239,10 @@ Payload_power = 0.2;
 CDH_power = 1.2;
 EPS_power = 1.78;
 Comm_RX = 0.23; 
-Bat_Heater = 4.64;
+Bat_Heater = 4.64; %Comm TX and Bat Heater Not need to be added with duty cycle
 ADCS_power = 0.002;
 
-Total_Power = CDH_power + EPS_power+ Comm_RX+ Payload_power + ADCS_power;
+Total_Power = CDH_power + EPS_power + Comm_RX + Payload_power + ADCS_power;
 
 %-------------------------------------------------------------------------%
 %                         calculating Current SOC                         %
@@ -204,21 +259,24 @@ else
     SOC = SOC + excess_charge*100/(2.5*3600*2);
 end
     
+%SOC_array = [SOC_array; SOC];
 
-
-
-%SOC = [SOC ;SOC + excess_charge/(2.5*3600*2)]; %Confirm 
-SOC_array = [SOC_array; SOC];
-
+SOC_array(t) = SOC;
 
 end
 
+%-------------------------------------------------------------------------%
+%                         Plotting the Results                            %
+%-------------------------------------------------------------------------%
 
-t = time_total*(1/ts) + 1;
+t_plot = time_total*(1/ts) + 1;
 s = 20;
-timespan = linspace(1,t,t);
-% time_x_label = store_t/6035;            %in days
-time_x_label = timespan/(24*60*60*(1/ts));
+
+timespan = linspace(1,t_plot,t_plot);
+
+time_x_label = timespan/(24*60*60*(1/ts)); %in days
+
+
 figure(1)
 plot(time_x_label, w_x*180/pi,'b',time_x_label,w_y*180/pi,'r', time_x_label,w_z*180/pi,'g' );
 grid on;
@@ -300,6 +358,12 @@ figure(11)
 plot(time_x_label, SOC_array);
 grid on;
 title('SOC'); xlabel('time (days)'); ylabel('SOC'); 
+set(gca,'fontsize',s);
+
+figure(12)
+plot(time_x_label, Power_gen_b);
+grid on;
+title('Power Generated'); xlabel('time (days)'); ylabel('Power(watts)'); 
 set(gca,'fontsize',s);
 
 % figure(9)
