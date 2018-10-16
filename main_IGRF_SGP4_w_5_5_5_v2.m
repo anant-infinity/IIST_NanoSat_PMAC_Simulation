@@ -23,11 +23,11 @@ mu0 = 4*pi*10^(-7);
 %-------------------------------------------------------------------------%
 %                    TLE file name for running SGP4                       %
 %-------------------------------------------------------------------------%
-fname = 'tle_isat.txt';
+fname = 'tle_isat_new.txt';
 %simulation start date:  datenum(2019,01,01,00,00,00): 735126.041527778
 start_date = datenum(2019,01,01,00,00,00);
 
-time_total = 1000 ;  
+time_total = 15*24*3600 ;  
 
 
 
@@ -209,7 +209,7 @@ S_eci = [cos(degtorad(lambda_elliptic)), cos(epsilon)*sin(degtorad(lambda_ellipt
 %Sun Vector in Body Frame 
 S_body = dcm*S_eci;
 %S_eci_b = [S_eci_b; S_eci'];
-S_eci_b(t) = S_eci';
+%S_eci_b(t) = S_eci';
 %S_Body_Norm =  S_body/norm(S_body);
 
 %Sun Vector angle with Spacecraft axes
@@ -218,17 +218,38 @@ cos_alpha_y = dot([0;1;0],S_body)/(norm(S_body));
 cos_alpha_z = dot([0;0;1],S_body)/(norm(S_body));
 
 %-------------------------------------------------------------------------%
+%                         Checking for Eclipse                            %
+%-------------------------------------------------------------------------%
+
+alpha1 = pi - acos(dot(S_eci,pos)/(norm(S_eci)*norm(pos))); 
+
+Re = 6.371e6;
+Rs = 6.96e8;
+var1 = 1.496e11*Re/(Rs - Re);
+alpha2 = acos(Re/var1) - acos(Re/norm(pos));
+
+if(alpha1<alpha2)
+    iseclipse = 1;
+else
+    iseclipse = 0;
+end
+
+%-------------------------------------------------------------------------%
 %                         Calculating Power Generation                    %
 %-------------------------------------------------------------------------%
 
 eta = 0.266; % Solar Efficiency - Efficiency 
 intensity = 1; % Solar Intensity 
 panel_area = 30.18*10^(-4);
-panels_per_face = 6;
+panels_per_face = 7;
 solar_irradiance = 1353;
 buck_efficieny = 0.85;
-P_gen = buck_efficieny*eta*intensity*panel_area*solar_irradiance*panels_per_face*(abs(cos_alpha_x) + abs(cos_alpha_y));
 
+if(iseclipse == 0)
+    P_gen = buck_efficieny*eta*intensity*panel_area*solar_irradiance*panels_per_face*(abs(cos_alpha_x) + abs(cos_alpha_y));
+else
+    P_gen = 0 ;
+end
 %Power_gen_b = [Power_gen_b; P_gen];
 Power_gen_b(t) = P_gen;
 
@@ -269,7 +290,7 @@ end
 %                         Plotting the Results                            %
 %-------------------------------------------------------------------------%
 
-t_plot = time_total*(1/ts) + 1;
+t_plot = time_total*(1/ts) + 2;
 s = 20;
 
 timespan = linspace(1,t_plot,t_plot);
@@ -278,7 +299,8 @@ time_x_label = timespan/(24*60*60*(1/ts)); %in days
 
 
 figure(1)
-plot(time_x_label, w_x*180/pi,'b',time_x_label,w_y*180/pi,'r', time_x_label,w_z*180/pi,'g' );
+mod_w = sqrt(w_x.^2 + w_y.^2 + w_z.^2) ; 
+plot(time_x_label, w_x*180/pi,'b',time_x_label,w_y*180/pi,'r', time_x_label,w_z*180/pi,'g',time_x_label, mod_w*180/pi, 'y');
 grid on;
 title('angular rates');   xlabel('time (days)');  ylabel('angular rates (deg/sec)');
 legend('x','y','z');
